@@ -1,0 +1,130 @@
+# Binaries for programs and plugins
+pull-secret
+pull-secret-mvp
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# Go build cache
+.cache/
+
+# IDE - VSCode
+.vscode/
+*.code-workspace
+
+# IDE - IntelliJ / GoLand
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# IDE - Vim
+*.swp
+*.swo
+*~
+.*.sw?
+
+# IDE - Emacs
+*~
+\#*\#
+.\#*
+
+# OS - macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# OS - Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+
+# OS - Linux
+.directory
+.Trash-*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.log
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+*.csr
+secrets/
+*.secret
+
+# GCP credentials (NEVER commit these!)
+*-credentials.json
+*-serviceaccount.json
+service-account-*.json
+gcp-*.json
+application_default_credentials.json
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Container/Docker local artifacts
+*.tar
+*.tar.gz
+
+# Build artifacts and binaries
+dist/
+build/
+bin/
+
+# Test cache
+testdata/output/
+
+# Air (live reload) temp files
+tmp/
+
+# Delve debugger
+__debug_bin
+
+# Go sum backup
+go.sum.backup
+
+# Templates rendered (if any)
+templates/*-template.json
+
+# Local test files
+*_local_test.go
+
+# Performance profiles
+*.prof
+*.pprof
+
+# Migration files (if dynamically generated)
+migrations/*.sql.tmp
+
+# Claude settings (local only)
+.claude/
