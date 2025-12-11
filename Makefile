@@ -1,0 +1,156 @@
+.DEFAULT_GOAL := help
+
+# CGO_ENABLED=0 for static binary (MVP simplified build)
+# Set to 1 for FIPS compliance in production if needed
+CGO_ENABLED := 0
+GOPATH ?= $(shell go env GOPATH)
+
+# Go version
+GO_VERSION := go1.23.9
+
+# Version information
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+# Container tool (podman or docker)
+CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || echo docker)
+
+# Image configuration
+IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
+IMAGE_NAME ?= pull-secret
+IMAGE_TAG ?= $(VERSION)
+
+# Dev image configuration
+QUAY_USER ?=
+DEV_TAG ?= dev-$(COMMIT)
+
+# Enable Go modules
+export GOPROXY=https://proxy.golang.org
+export GOPRIVATE=gitlab.cee.redhat.com
+
+####################
+# Help
+####################
+
+help: ## Display this help
+	@echo ""
+	@echo "HyperFleet MVP - Pull Secret Job"
+	@echo ""
+	@echo "Build Targets:"
+	@echo "  make binary               compile pull-secret binary"
+	@echo "  make test                 run unit tests with coverage"
+	@echo "  make lint                 run golangci-lint"
+	@echo "  make image                build container image"
+	@echo "  make image-push           build and push container image"
+	@echo "  make image-dev            build and push to personal Quay registry"
+	@echo "  make clean                delete temporary generated files"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make binary"
+	@echo "  make test"
+	@echo "  make lint"
+	@echo "  make image IMAGE_TAG=v1.0.0"
+	@echo "  make image-push IMAGE_TAG=v1.0.0"
+	@echo "  make image-dev QUAY_USER=myuser"
+	@echo ""
+.PHONY: help
+
+####################
+# Build Targets
+####################
+
+# Checks if a GOPATH is set, or emits an error message
+check-gopath:
+ifndef GOPATH
+	$(error GOPATH is not set)
+endif
+.PHONY: check-gopath
+
+# Build pull-secret binary
+# CGO_ENABLED=0 produces a static binary (no libc dependency)
+binary: check-gopath
+	@echo "Building pull-secret binary..."
+	CGO_ENABLED=$(CGO_ENABLED) go build \
+		-o pull-secret \
+		./cmd/pull-secret
+	@echo "Binary built: ./pull-secret"
+	@go version | grep -q "$(GO_VERSION)" || \
+		( \
+			printf '\033[41m\033[97m\n'; \
+			echo "* WARNING: Your go version is not the expected $(GO_VERSION) *" | sed 's/./*/g'; \
+			echo "* WARNING: Your go version is not the expected $(GO_VERSION) *"; \
+			echo "* WARNING: Your go version is not the expected $(GO_VERSION) *" | sed 's/./*/g'; \
+			printf '\033[0m\n'; \
+		)
+.PHONY: binary
+
+####################
+# Test & Lint Targets
+####################
+
+# Run unit tests with coverage
+test:
+	@echo "Running tests with coverage..."
+	go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+	@echo ""
+	@echo "Coverage report generated: coverage.txt"
+	@echo "View HTML coverage: go tool cover -html=coverage.txt"
+	@echo ""
+.PHONY: test
+
+# Run golangci-lint
+# Install: https://golangci-lint.run/usage/install/
+lint:
+	@echo "Running golangci-lint..."
+	@if which golangci-lint > /dev/null 2>&1; then \
+		golangci-lint run --timeout=5m; \
+	elif [ -x "$(GOPATH)/bin/golangci-lint" ]; then \
+		$(GOPATH)/bin/golangci-lint run --timeout=5m; \
+	else \
+		echo "golangci-lint not found. Install: https://golangci-lint.run/usage/install/"; \
+		echo "Or run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b \$$(go env GOPATH)/bin v1.61.0"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Linting passed!"
+	@echo ""
+.PHONY: lint
+
+####################
+# Container Image Targets
+####################
+
+image: ## Build container image with configurable registry/tag
+	@echo "Building image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	$(CONTAINER_TOOL) build -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+.PHONY: image
+
+image-push: image ## Build and push container image
+	@echo "Pushing image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	$(CONTAINER_TOOL) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+.PHONY: image-push
+
+image-dev: ## Build and push to personal Quay registry
+	@if [ -z "$(QUAY_USER)" ]; then \
+		echo "Error: QUAY_USER is not set"; \
+		echo "Usage: make image-dev QUAY_USER=your-username"; \
+		exit 1; \
+	fi
+	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
+	$(CONTAINER_TOOL) build -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	@echo "Pushing dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
+	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
+.PHONY: image-dev
+
+####################
+# Clean
+####################
+
+# Delete temporary files and build artifacts
+clean:
+	@echo "Cleaning build artifacts..."
+	rm -f pull-secret
+	rm -f *.exe *.dll *.so *.dylib
+	rm -f coverage.txt coverage.html
+	@echo "Clean complete."
+.PHONY: clean
