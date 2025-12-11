@@ -5,21 +5,24 @@
 CGO_ENABLED := 0
 GOPATH ?= $(shell go env GOPATH)
 
-# Image version - uses timestamp for uniqueness
-version := $(shell date +%s)
-
 # Go version
 GO_VERSION := go1.23.9
 
-# Container image configuration
-# Override these via environment variables if needed:
-# - IMAGE_REGISTRY: Container registry (default: quay.io)
-# - IMAGE_REPOSITORY: Repository path (default: hyperfleet/pull-secret)
-# - IMAGE_TAG: Image tag (default: timestamp-based version)
-IMAGE_REGISTRY ?= quay.io
-IMAGE_REPOSITORY ?= hyperfleet/pull-secret
-IMAGE_TAG ?= $(version)
-IMAGE_FULL = $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
+# Version information
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+# Container tool (podman or docker)
+CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || echo docker)
+
+# Image configuration
+IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
+IMAGE_NAME ?= pull-secret
+IMAGE_TAG ?= $(VERSION)
+
+# Dev image configuration
+QUAY_USER ?=
+DEV_TAG ?= dev-$(COMMIT)
 
 # Enable Go modules
 export GOPROXY=https://proxy.golang.org
@@ -29,20 +32,26 @@ export GOPRIVATE=gitlab.cee.redhat.com
 # Help
 ####################
 
-help:
+help: ## Display this help
 	@echo ""
 	@echo "HyperFleet MVP - Pull Secret Job"
 	@echo ""
 	@echo "Build Targets:"
 	@echo "  make binary               compile pull-secret binary"
+	@echo "  make test                 run unit tests with coverage"
+	@echo "  make lint                 run golangci-lint"
 	@echo "  make image                build container image"
-	@echo "  make push                 push container image to quay.io"
+	@echo "  make image-push           build and push container image"
+	@echo "  make image-dev            build and push to personal Quay registry"
 	@echo "  make clean                delete temporary generated files"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make binary"
+	@echo "  make test"
+	@echo "  make lint"
 	@echo "  make image IMAGE_TAG=v1.0.0"
-	@echo "  make push IMAGE_REGISTRY=quay.io IMAGE_REPOSITORY=myorg/pull-secret"
+	@echo "  make image-push IMAGE_TAG=v1.0.0"
+	@echo "  make image-dev QUAY_USER=myuser"
 	@echo ""
 .PHONY: help
 
@@ -76,44 +85,62 @@ binary: check-gopath
 .PHONY: binary
 
 ####################
+# Test & Lint Targets
+####################
+
+# Run unit tests with coverage
+test:
+	@echo "Running tests with coverage..."
+	go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+	@echo ""
+	@echo "Coverage report generated: coverage.txt"
+	@echo "View HTML coverage: go tool cover -html=coverage.txt"
+	@echo ""
+.PHONY: test
+
+# Run golangci-lint
+# Install: https://golangci-lint.run/usage/install/
+lint:
+	@echo "Running golangci-lint..."
+	@if which golangci-lint > /dev/null 2>&1; then \
+		golangci-lint run --timeout=5m; \
+	elif [ -x "$(GOPATH)/bin/golangci-lint" ]; then \
+		$(GOPATH)/bin/golangci-lint run --timeout=5m; \
+	else \
+		echo "golangci-lint not found. Install: https://golangci-lint.run/usage/install/"; \
+		echo "Or run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b \$$(go env GOPATH)/bin v1.61.0"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "Linting passed!"
+	@echo ""
+.PHONY: lint
+
+####################
 # Container Image Targets
 ####################
 
-# Build container image using podman
-# Uses multi-stage Dockerfile for optimized image size
-#
-# Examples:
-#   make image
-#   make image IMAGE_TAG=v1.0.0
-#   make image IMAGE_REGISTRY=quay.io IMAGE_REPOSITORY=myorg/pull-secret-mvp
-image:
-	@echo "Building container image..."
-	@echo "Image: $(IMAGE_FULL)"
-	podman build -t "$(IMAGE_FULL)" -f Dockerfile .
-	@echo ""
-	@echo "Image built successfully: $(IMAGE_FULL)"
-	@echo ""
-	@echo "To run locally:"
-	@echo "  podman run --rm -e GCP_PROJECT_ID=your-project -e CLUSTER_ID=cls-123 $(IMAGE_FULL)"
-	@echo ""
+image: ## Build container image with configurable registry/tag
+	@echo "Building image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	$(CONTAINER_TOOL) build -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 .PHONY: image
 
-# Push container image to registry (quay.io by default)
-# Requires authentication: podman login $(IMAGE_REGISTRY)
-#
-# Examples:
-#   make push
-#   make push IMAGE_TAG=v1.0.0
-#   make push IMAGE_REGISTRY=quay.io IMAGE_REPOSITORY=hyperfleet/pull-secret-mvp
-push: image
-	@echo "Pushing image to registry..."
-	@echo "Image: $(IMAGE_FULL)"
-	podman push "$(IMAGE_FULL)"
-	@echo ""
-	@echo "Image pushed successfully!"
-	@echo "Pull with: podman pull $(IMAGE_FULL)"
-	@echo ""
-.PHONY: push
+image-push: image ## Build and push container image
+	@echo "Pushing image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	$(CONTAINER_TOOL) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+.PHONY: image-push
+
+image-dev: ## Build and push to personal Quay registry
+	@if [ -z "$(QUAY_USER)" ]; then \
+		echo "Error: QUAY_USER is not set"; \
+		echo "Usage: make image-dev QUAY_USER=your-username"; \
+		exit 1; \
+	fi
+	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
+	$(CONTAINER_TOOL) build -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	@echo "Pushing dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
+	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
+.PHONY: image-dev
 
 ####################
 # Clean
@@ -124,5 +151,6 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -f pull-secret
 	rm -f *.exe *.dll *.so *.dylib
+	rm -f coverage.txt coverage.html
 	@echo "Clean complete."
 .PHONY: clean

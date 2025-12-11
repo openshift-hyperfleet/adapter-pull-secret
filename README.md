@@ -131,18 +131,17 @@ podman login quay.io
 #### Using Makefile (Recommended)
 
 ```bash
-# Build with automatic timestamp tag
-make image IMAGE_REGISTRY=quay.io IMAGE_REPOSITORY=your-username/pull-secret
+# Build with automatic git version tag
+make image
+
+# Build with custom registry
+make image IMAGE_REGISTRY=quay.io/your-username
 
 # Build with specific tag
-make image IMAGE_REGISTRY=quay.io \
-           IMAGE_REPOSITORY=your-username/pull-secret \
-           IMAGE_TAG=v1.0.0
+make image IMAGE_TAG=v1.0.0
 
-# Build with latest tag
-make image IMAGE_REGISTRY=quay.io \
-           IMAGE_REPOSITORY=your-username/pull-secret \
-           IMAGE_TAG=latest
+# Build for personal development (uses QUAY_USER)
+make image-dev QUAY_USER=your-username
 ```
 
 #### Using Podman Directly
@@ -166,15 +165,14 @@ podman build \
 #### Using Makefile (Recommended)
 
 ```bash
-# Push with automatic tag (builds and pushes)
-make push IMAGE_REGISTRY=quay.io \
-          IMAGE_REPOSITORY=your-username/pull-secret \
-          IMAGE_TAG=v1.0.0
+# Build and push with git version
+make image-push
 
-# Push latest
-make push IMAGE_REGISTRY=quay.io \
-          IMAGE_REPOSITORY=your-username/pull-secret \
-          IMAGE_TAG=latest
+# Build and push with specific tag
+make image-push IMAGE_TAG=v1.0.0
+
+# Build and push to personal Quay (development workflow)
+make image-dev QUAY_USER=your-username
 ```
 
 #### Using Podman Directly
@@ -192,22 +190,27 @@ podman push --all-tags quay.io/your-username/pull-secret
 
 ### 4. Complete Build and Push Workflow
 
-#### Example 1: Development Build
+#### Example 1: Development Build (Personal Quay)
 
 ```bash
-# Build and push with timestamp tag
-make push IMAGE_REGISTRY=quay.io \
-          IMAGE_REPOSITORY=your-username/pull-secret \
-          IMAGE_TAG=dev-$(date +%Y%m%d-%H%M%S)
+# Build and push to your personal Quay.io account
+# Tag will be automatically generated as dev-<git-commit>
+make image-dev QUAY_USER=your-username
+
+# Example output:
+# Building dev image quay.io/your-username/pull-secret:dev-f1bf914...
+# Pushing dev image quay.io/your-username/pull-secret:dev-f1bf914...
 ```
 
-#### Example 2: Release Build
+#### Example 2: Release Build (Official Registry)
 
 ```bash
-# Build and push versioned release
-make push IMAGE_REGISTRY=quay.io \
-          IMAGE_REPOSITORY=your-username/pull-secret \
-          IMAGE_TAG=v1.0.0
+# Build and push versioned release to official registry
+make image-push IMAGE_TAG=v1.0.0
+
+# Example output:
+# Building image quay.io/openshift-hyperfleet/pull-secret:v1.0.0...
+# Pushing image quay.io/openshift-hyperfleet/pull-secret:v1.0.0...
 ```
 
 #### Example 3: Manual Multi-Tag Push
@@ -251,26 +254,30 @@ You can customize the build using these environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMAGE_REGISTRY` | `quay.io` | Container registry hostname |
-| `IMAGE_REPOSITORY` | `hyperfleet/pull-secret` | Repository path |
-| `IMAGE_TAG` | `<timestamp>` | Image tag |
+| `VERSION` | git describe | Version tag from git |
+| `COMMIT` | git rev-parse | Short commit hash |
+| `CONTAINER_TOOL` | podman/docker | Container build tool (auto-detected) |
+| `IMAGE_REGISTRY` | `quay.io/openshift-hyperfleet` | Container registry |
+| `IMAGE_NAME` | `pull-secret` | Image name |
+| `IMAGE_TAG` | `$(VERSION)` | Image tag (defaults to git version) |
+| `QUAY_USER` | (empty) | Personal Quay username for dev builds |
+| `DEV_TAG` | `dev-$(COMMIT)` | Dev image tag |
 
 **Examples:**
 
 ```bash
-# Use defaults (quay.io/hyperfleet/pull-secret:<timestamp>)
+# Use defaults (quay.io/openshift-hyperfleet/pull-secret:<git-version>)
 make image
 
-# Override registry only
-make image IMAGE_REGISTRY=docker.io
+# Build with custom tag
+make image IMAGE_TAG=v1.0.0
 
-# Override repository only
-make image IMAGE_REPOSITORY=myorg/pull-secret
+# Build with custom registry
+make image IMAGE_REGISTRY=quay.io/myorg
 
-# Override everything
-make image IMAGE_REGISTRY=ghcr.io \
-           IMAGE_REPOSITORY=myorg/pull-secret \
-           IMAGE_TAG=v2.0.0
+# Personal development build
+make image-dev QUAY_USER=ldornele
+# Results in: quay.io/ldornele/pull-secret:dev-f1bf914
 ```
 
 ### 7. Dockerfile Details
