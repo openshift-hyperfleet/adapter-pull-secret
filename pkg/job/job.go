@@ -1,3 +1,4 @@
+// Package job provides a framework for defining and executing concurrent jobs with task queues and worker pools.
 package job
 
 import (
@@ -43,39 +44,47 @@ type CommandBuilder struct {
 	// panicHandler is an optional function that accepts interface and can deal with it how it wants.
 	// An example use can be to capture any errors and report it to sentry. Not setting panicHandler means any panics
 	// encountered will be silently recovered.
-	panicHandler    func(ctx context.Context, any interface{})
+	panicHandler    func(ctx context.Context, panicValue interface{})
 	metricsReporter MetricsReporter
 }
 
+// SetRegistry sets the job registry for the command builder.
 func (b *CommandBuilder) SetRegistry(registry JobRegistry) *CommandBuilder {
 	b.registry = registry
 	return b
 }
 
+// SetContext sets the context for the command builder.
 func (b *CommandBuilder) SetContext(ctx context.Context) *CommandBuilder {
 	b.ctx = ctx
 	return b
 }
 
+// SetBeforeJob sets the hook function to execute before job execution.
 func (b *CommandBuilder) SetBeforeJob(fn func(ctx context.Context) error) *CommandBuilder {
 	b.beforeJob = fn
 	return b
 }
+
+// SetAfterJob sets the hook function to execute after job execution.
 func (b *CommandBuilder) SetAfterJob(fn func(ctx context.Context)) *CommandBuilder {
 	b.afterJob = fn
 	return b
 }
 
-func (b *CommandBuilder) SetPanicHandler(fn func(ctx context.Context, any interface{})) *CommandBuilder {
+// SetPanicHandler sets the panic handler function for the command builder.
+func (b *CommandBuilder) SetPanicHandler(fn func(ctx context.Context, panicValue interface{})) *CommandBuilder {
 	b.panicHandler = fn
 	return b
 }
 
+// SetMetricsReporter sets the metrics reporter for the command builder.
 func (b *CommandBuilder) SetMetricsReporter(reporter MetricsReporter) *CommandBuilder {
 	b.metricsReporter = reporter
 	return b
 }
 
+// Build creates and returns a Cobra command with all registered jobs as subcommands.
 func (b *CommandBuilder) Build() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run-job",
@@ -89,7 +98,7 @@ func (b *CommandBuilder) Build() *cobra.Command {
 			Long: job.GetMetadata().Description,
 			// We don't need this info if job fails.
 			SilenceUsage: true,
-			RunE: func(cmd *cobra.Command, args []string) error {
+			RunE: func(_ *cobra.Command, _ []string) error {
 				err := validateJob(job)
 				if err != nil {
 					return err
@@ -118,14 +127,19 @@ func validateJob(job Job) error {
 	return nil
 }
 
+// JobRegistry maintains a collection of jobs that can be registered and executed.
+//
+//nolint:revive // JobRegistry is preferred over Registry for clarity in external usage
 type JobRegistry struct {
 	jobs []Job
 }
 
+// NewJobRegistry creates a new job registry.
 func NewJobRegistry() *JobRegistry {
 	return &JobRegistry{}
 }
 
+// AddJob adds a job to the registry.
 func (r *JobRegistry) AddJob(job Job) {
 	if job == nil {
 		return
@@ -171,7 +185,7 @@ func newTaskQueue() *taskQueue {
 type workerPool struct {
 	Queue            *taskQueue
 	Workers          int
-	PanicHandler     func(ctx context.Context, any interface{})
+	PanicHandler     func(ctx context.Context, panicValue interface{})
 	MetricsCollector *MetricsCollector
 }
 
@@ -192,11 +206,11 @@ func (wp *workerPool) Run(ctx context.Context) {
 					return
 				}
 				func() {
-					taskId := ksuid.New().String()
+					taskID := ksuid.New().String()
 
 					taskCtx := AddTraceContext(ctx, "workerId", strconv.Itoa(workerId))
 					taskCtx = AddTraceContext(taskCtx, "taskName", task.TaskName())
-					taskCtx = AddTraceContext(taskCtx, "taskId", taskId)
+					taskCtx = AddTraceContext(taskCtx, "taskId", taskID)
 
 					defer func(taskCtx context.Context) {
 						if err := recover(); err != nil {
@@ -208,7 +222,7 @@ func (wp *workerPool) Run(ctx context.Context) {
 						}
 					}(taskCtx)
 
-					logger.NewOCMLogger(taskCtx).Contextual().Info("Processing task", "workerId", workerId, "taskId", taskId)
+					logger.NewOCMLogger(taskCtx).Contextual().Info("Processing task", "workerId", workerId, "taskId", taskID)
 					err := task.Process(taskCtx)
 					if err != nil {
 						wp.MetricsCollector.IncTaskFailed()
@@ -235,7 +249,7 @@ var _ runner = &TestRunner{}
 type jobRunner struct {
 	BeforeJob       func(ctx context.Context) error
 	AfterJob        func(ctx context.Context)
-	PanicHandler    func(ctx context.Context, any interface{})
+	PanicHandler    func(ctx context.Context, panicValue interface{})
 	MetricsReporter MetricsReporter
 }
 
@@ -283,7 +297,7 @@ func (jr jobRunner) Run(ctx context.Context, job Job, workerCount int) error {
 	}
 	for _, task := range tasks {
 		taskQueue.Add(task)
-		taskTotal += 1
+		taskTotal++
 	}
 	metricsCollector := NewMetricsCollector(job.GetMetadata().Use)
 	metricsCollector.SetTaskTotal(uint32(taskTotal))
@@ -320,6 +334,7 @@ func (jr jobRunner) Run(ctx context.Context, job Job, workerCount int) error {
 // TestRunner is a lightweight JobRunner implementation to enable for easy testing of job logic.
 type TestRunner struct{}
 
+// Run executes the job in test mode without lifecycle hooks.
 func (tr TestRunner) Run(ctx context.Context, job Job, workerCount int) error {
 	taskTotal := 0
 	taskQueue := newTaskQueue()
@@ -331,7 +346,7 @@ func (tr TestRunner) Run(ctx context.Context, job Job, workerCount int) error {
 	}
 	for _, task := range tasks {
 		taskQueue.Add(task)
-		taskTotal += 1
+		taskTotal++
 	}
 	metricsCollector := NewMetricsCollector(job.GetMetadata().Use)
 	metricsCollector.SetTaskTotal(uint32(taskTotal))
@@ -339,6 +354,11 @@ func (tr TestRunner) Run(ctx context.Context, job Job, workerCount int) error {
 	pool := workerPool{Queue: taskQueue, Workers: workerCount, PanicHandler: nil, MetricsCollector: metricsCollector}
 	pool.Run(ctx)
 
+	if metricsCollector.taskTotal == 0 {
+		// No tasks to run
+		return nil
+	}
+	// For now return error when all tasks fail. This can be configurable for e.g. return error when 80% of tasks fail.
 	if metricsCollector.taskFailed == metricsCollector.taskTotal {
 		err := errors.New("all tasks failed")
 		return err

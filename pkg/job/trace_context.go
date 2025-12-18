@@ -2,8 +2,9 @@ package job
 
 import (
 	"context"
-	logger "github.com/openshift-online/ocm-service-common/pkg/ocmlogger"
 	"sync"
+
+	logger "github.com/openshift-online/ocm-service-common/pkg/ocmlogger"
 )
 
 type (
@@ -23,6 +24,8 @@ var (
 // so user does not need to worry about callback registration separately.
 // The implementation is thread-safe to prevent concurrent access to `set` and `logger.RegisterExtraDataCallback`.
 
+// AddTraceContext adds a key-value pair to the context for tracing and logging purposes.
+// It registers a callback for the key on first use and returns the enriched context.
 func AddTraceContext(ctx context.Context, key string, value string) context.Context {
 	lock.Lock()
 	defer lock.Unlock()

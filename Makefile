@@ -39,6 +39,7 @@ help: ## Display this help
 	@echo "Build Targets:"
 	@echo "  make binary               compile pull-secret binary"
 	@echo "  make test                 run unit tests with coverage"
+	@echo "  make test-integration     run integration tests"
 	@echo "  make lint                 run golangci-lint"
 	@echo "  make image                build container image"
 	@echo "  make image-push           build and push container image"
@@ -48,6 +49,7 @@ help: ## Display this help
 	@echo "Examples:"
 	@echo "  make binary"
 	@echo "  make test"
+	@echo "  make test-integration"
 	@echo "  make lint"
 	@echo "  make image IMAGE_TAG=v1.0.0"
 	@echo "  make image-push IMAGE_TAG=v1.0.0"
@@ -88,15 +90,30 @@ binary: check-gopath
 # Test & Lint Targets
 ####################
 
-# Run unit tests with coverage
+# Run unit tests with coverage (excludes test/ directory)
 test:
-	@echo "Running tests with coverage..."
-	go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+	@echo "Running unit tests with coverage..."
+	go test -v -race -coverprofile=coverage.txt -covermode=atomic $$(go list ./... | grep -v '/test')
 	@echo ""
 	@echo "Coverage report generated: coverage.txt"
 	@echo "View HTML coverage: go tool cover -html=coverage.txt"
 	@echo ""
 .PHONY: test
+
+# Run integration tests
+test-integration:
+	@echo "Running integration tests..."
+	@if [ -n "$$(find ./test -name '*_test.go' 2>/dev/null)" ]; then \
+		go test -v -race ./test/...; \
+		echo ""; \
+		echo "Integration tests complete."; \
+		echo ""; \
+	else \
+		echo "No integration tests found in ./test/"; \
+		echo "Create integration tests in ./test/ directory."; \
+		echo ""; \
+	fi
+.PHONY: test-integration
 
 # Run golangci-lint
 # Install: https://golangci-lint.run/usage/install/

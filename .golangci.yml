@@ -1,6 +1,8 @@
 # golangci-lint configuration for HyperFleet Pull Secret Job
 # https://golangci-lint.run/usage/configuration/
 
+version: 2
+
 run:
   timeout: 5m
   tests: true
@@ -8,22 +10,21 @@ run:
 
 linters:
   enable:
-    - gofmt          # Checks whether code was gofmt-ed
-    - goimports      # Checks import statements are formatted according to the 'goimport' command
     - govet          # Reports suspicious constructs
     - errcheck       # Checks for unchecked errors
     - staticcheck    # Static analysis checks
     - unused         # Checks for unused constants, variables, functions and types
-    - gosimple       # Simplify code
     - ineffassign    # Detects ineffectual assignments
-    - typecheck      # Type-checks Go code
     - misspell       # Finds commonly misspelled English words
     - revive         # Fast, configurable, extensible, flexible, and beautiful linter for Go
     - gocritic       # Provides diagnostics that check for bugs, performance and style issues
 
+formatters:
+  enable:
+    - gofmt          # Checks whether code was gofmt-ed
+    - goimports      # Checks import statements are formatted according to the 'goimport' command
+
 linters-settings:
-  gofmt:
-    simplify: true
 
   govet:
     enable:
@@ -58,14 +59,9 @@ issues:
       linters:
         - errcheck
         - gosec
-    # Exclude pkg/job and pkg/config (external framework code)
-    - path: pkg/
-      linters:
-        - revive
-        - goimports
 
 output:
   formats:
-    - format: colored-line-number
+    stdout: colored-line-number
   print-issued-lines: true
   print-linter-name: true
