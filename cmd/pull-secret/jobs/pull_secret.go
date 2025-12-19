@@ -16,11 +16,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	pullSecretTaskName = "pull-secret-mvp"
+
+	// defaultPullSecretData is a fake pull secret used for testing when PULL_SECRET_DATA is not provided
+	defaultPullSecretData = `{"auths":{"cloud.openshift.com":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"quay.io":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"registry.connect.redhat.com":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"registry.redhat.io":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"}}}`
+)
+
 type PullSecretTask struct {
 	PullSecret   string
 	GCPProjectID string
 	ClusterID    string
 	SecretName   string
+	DryRun       bool
 }
 
 var PullSecretJobArgs struct {
@@ -28,10 +36,11 @@ var PullSecretJobArgs struct {
 }
 
 type PullSecretJob struct {
+	DryRun bool
 }
 
 func (e PullSecretTask) TaskName() string {
-	return "pull-secret-mvp"
+	return pullSecretTaskName
 }
 
 func (pullsecretJob *PullSecretJob) GetTasks() ([]job.Task, error) {
@@ -46,7 +55,7 @@ func (pullsecretJob *PullSecretJob) GetTasks() ([]job.Task, error) {
 
 	// Use fake pull secret for testing if PULL_SECRET_DATA is not provided
 	if pullSecretData == "" {
-		pullSecretData = `{"auths":{"cloud.openshift.com":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"quay.io":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"registry.connect.redhat.com":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"registry.redhat.io":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"}}}`
+		pullSecretData = defaultPullSecretData
 	}
 
 	// Auto-derive secret name if not provided
@@ -59,6 +68,7 @@ func (pullsecretJob *PullSecretJob) GetTasks() ([]job.Task, error) {
 		GCPProjectID: gcpProjectID,
 		ClusterID:    clusterID,
 		SecretName:   secretName,
+		DryRun:       pullsecretJob.DryRun,
 	})
 
 	return tasks, nil
@@ -71,7 +81,9 @@ func (pullsecretJob *PullSecretJob) GetMetadata() job.Metadata {
 	}
 }
 
-func (pullsecretJob *PullSecretJob) AddFlags(flags *pflag.FlagSet) {}
+func (pullsecretJob *PullSecretJob) AddFlags(flags *pflag.FlagSet) {
+	flags.BoolVar(&pullsecretJob.DryRun, "dry-run", false, "Dry run mode - validate authentication and configuration without creating/updating secrets")
+}
 
 func (pullsecretJob *PullSecretJob) GetWorkerCount() int {
 	return 1
@@ -91,7 +103,11 @@ func (e PullSecretTask) Process(ctx context.Context) error {
 		return fmt.Errorf("invalid pull secret format: %w", err)
 	}
 
-	logStructured("info", e.ClusterID, e.GCPProjectID, "start", 0, "Starting pull secret storage operation", "")
+	if e.DryRun {
+		logStructured("info", e.ClusterID, e.GCPProjectID, "start", 0, "Starting pull secret storage operation (DRY RUN MODE)", "")
+	} else {
+		logStructured("info", e.ClusterID, e.GCPProjectID, "start", 0, "Starting pull secret storage operation", "")
+	}
 
 	// Initialize Secret Manager client
 	client, err := secretmanager.NewClient(ctx)
@@ -106,6 +122,14 @@ func (e PullSecretTask) Process(ctx context.Context) error {
 	}()
 
 	logStructured("info", e.ClusterID, e.GCPProjectID, "client-initialized", 0, "Successfully initialized Secret Manager client", "")
+
+	// In dry-run mode, skip actual secret operations
+	if e.DryRun {
+		logStructured("info", e.ClusterID, e.GCPProjectID, "dry-run", 0, "DRY RUN: Skipping secret creation/update operations", "")
+		logStructured("info", e.ClusterID, e.GCPProjectID, "dry-run", 0, fmt.Sprintf("DRY RUN: Would create/update secret: %s", e.SecretName), "")
+		logStructured("info", e.ClusterID, e.GCPProjectID, "completed", 0, "DRY RUN completed successfully - authentication validated", "")
+		return nil
+	}
 
 	// Create or update secret with retry logic
 	if err := retryWithBackoff(ctx, func() error {
