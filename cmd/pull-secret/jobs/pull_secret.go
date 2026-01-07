@@ -19,9 +19,6 @@ import (
 
 const (
 	pullSecretTaskName = "pull-secret-mvp"
-
-	// defaultPullSecretData is a fake pull secret used for testing when PULL_SECRET_DATA is not provided
-	defaultPullSecretData = `{"auths":{"cloud.openshift.com":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"quay.io":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"registry.connect.redhat.com":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"},"registry.redhat.io":{"auth":"ZmFrZXVzZXI6ZmFrZXBhc3N3b3Jk","email":"user@example.com"}}}`
 )
 
 type PullSecretTask struct {
@@ -40,6 +37,21 @@ func (e PullSecretTask) TaskName() string {
 	return pullSecretTaskName
 }
 
+// projectPath returns the GCP project path
+func (e PullSecretTask) projectPath() string {
+	return fmt.Sprintf("projects/%s", e.GCPProjectID)
+}
+
+// secretPath returns the full path to the secret
+func (e PullSecretTask) secretPath() string {
+	return fmt.Sprintf("projects/%s/secrets/%s", e.GCPProjectID, e.SecretName)
+}
+
+// secretVersionPath returns the path to a specific secret version
+func (e PullSecretTask) secretVersionPath(version string) string {
+	return fmt.Sprintf("projects/%s/secrets/%s/versions/%s", e.GCPProjectID, e.SecretName, version)
+}
+
 func (pullsecretJob *PullSecretJob) GetTasks() ([]job.Task, error) {
 
 	var tasks []job.Task
@@ -50,9 +62,9 @@ func (pullsecretJob *PullSecretJob) GetTasks() ([]job.Task, error) {
 	secretName := os.Getenv("SECRET_NAME")
 	pullSecretData := os.Getenv("PULL_SECRET_DATA")
 
-	// Use fake pull secret for testing if PULL_SECRET_DATA is not provided
+	// Fail fast if PULL_SECRET_DATA is not provided
 	if pullSecretData == "" {
-		pullSecretData = defaultPullSecretData
+		return nil, fmt.Errorf("PULL_SECRET_DATA environment variable is required but not set")
 	}
 
 	// Auto-derive secret name if not provided
@@ -203,10 +215,8 @@ func (e PullSecretTask) createOrUpdateSecret(ctx context.Context, client *secret
 
 // secretExists checks if a secret exists in GCP Secret Manager
 func (e PullSecretTask) secretExists(ctx context.Context, client *secretmanager.Client) (bool, error) {
-	name := fmt.Sprintf("projects/%s/secrets/%s", e.GCPProjectID, e.SecretName)
-
 	req := &secretmanagerpb.GetSecretRequest{
-		Name: name,
+		Name: e.secretPath(),
 	}
 
 	_, err := client.GetSecret(ctx, req)
@@ -223,7 +233,7 @@ func (e PullSecretTask) secretExists(ctx context.Context, client *secretmanager.
 // createSecret creates a new secret in GCP Secret Manager
 func (e PullSecretTask) createSecret(ctx context.Context, client *secretmanager.Client) error {
 	req := &secretmanagerpb.CreateSecretRequest{
-		Parent:   fmt.Sprintf("projects/%s", e.GCPProjectID),
+		Parent:   e.projectPath(),
 		SecretId: e.SecretName,
 		Secret: &secretmanagerpb.Secret{
 			Replication: &secretmanagerpb.Replication{
@@ -251,10 +261,8 @@ func (e PullSecretTask) createSecret(ctx context.Context, client *secretmanager.
 
 // addSecretVersion adds a new version with pull secret data
 func (e PullSecretTask) addSecretVersion(ctx context.Context, client *secretmanager.Client) (string, error) {
-	parent := fmt.Sprintf("projects/%s/secrets/%s", e.GCPProjectID, e.SecretName)
-
 	req := &secretmanagerpb.AddSecretVersionRequest{
-		Parent: parent,
+		Parent: e.secretPath(),
 		Payload: &secretmanagerpb.SecretPayload{
 			Data: []byte(e.PullSecret),
 		},
@@ -271,10 +279,9 @@ func (e PullSecretTask) addSecretVersion(ctx context.Context, client *secretmana
 // verifySecret verifies that the secret is accessible
 func (e PullSecretTask) verifySecret(ctx context.Context, client *secretmanager.Client) error {
 	startTime := time.Now()
-	name := fmt.Sprintf("projects/%s/secrets/%s/versions/latest", e.GCPProjectID, e.SecretName)
 
 	req := &secretmanagerpb.AccessSecretVersionRequest{
-		Name: name,
+		Name: e.secretVersionPath("latest"),
 	}
 
 	result, err := client.AccessSecretVersion(ctx, req)

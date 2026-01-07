@@ -1,0 +1,76 @@
+# Default values for pull-secret adapter
+
+# Namespace where the job will be deployed
+namespace: hyperfleet-system
+
+# Job configuration
+job:
+  # Name of the Kubernetes Job
+  name: pullsecret-job
+
+  # Number of times to retry the job on failure
+  backoffLimit: 3
+
+  # Time in seconds after job completion before cleanup (1 hour)
+  ttlSecondsAfterFinished: 3600
+
+  # Job restart policy
+  restartPolicy: Never
+
+# Image configuration
+image:
+  repository: quay.io/hyperfleet/pull-secret
+  tag: latest
+  pullPolicy: Always
+
+# ServiceAccount configuration
+serviceAccount:
+  # Name of the Kubernetes ServiceAccount
+  name: pullsecret-adapter
+
+  # GCP service account email for Workload Identity
+  # IMPORTANT: Replace with your actual GCP service account
+  gcpServiceAccount: your-service-account@your-project.iam.gserviceaccount.com
+
+# Environment variables
+env:
+  # GCP project ID where secrets will be stored
+  # IMPORTANT: Replace with your actual GCP project ID
+  gcpProjectId: "your-gcp-project"
+
+  # Cluster identifier
+  # IMPORTANT: Replace with your actual cluster ID
+  clusterId: "your-cluster-id"
+
+  # Secret name in GCP Secret Manager (auto-derived if not provided)
+  # This will be auto-generated as: hyperfleet-{clusterId}-pull-secret
+  secretName: "hyperfleet-your-cluster-id-pull-secret"
+
+  # Pull secret JSON data (must be provided)
+  # IMPORTANT: Replace with your actual pull secret data
+  # This is a dummy example - use your real OpenShift pull secret
+  pullSecretData: '{"auths":{"registry.example.com":{"auth":"ZXhhbXBsZTpleGFtcGxl","email":"user@example.com"}}}'
+
+# Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Labels
+labels:
+  app: pullsecret-adapter
+  jobType: pull-secret
