@@ -37,7 +37,7 @@ help: ## Display this help
 	@echo "HyperFleet MVP - Pull Secret Job"
 	@echo ""
 	@echo "Build Targets:"
-	@echo "  make binary               compile pull-secret binary"
+	@echo "  make build                compile pull-secret binary"
 	@echo "  make test                 run unit tests with coverage"
 	@echo "  make test-integration     run integration tests (requires podman)"
 	@echo "  make lint                 run golangci-lint"
@@ -50,7 +50,7 @@ help: ## Display this help
 	@echo "  make clean                delete temporary generated files"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make binary"
+	@echo "  make build"
 	@echo "  make test"
 	@echo "  make test-integration"
 	@echo "  make lint"
@@ -72,9 +72,9 @@ ifndef GOPATH
 endif
 .PHONY: check-gopath
 
-# Build pull-secret binary
+# Build pull-secret binary (HYPERFLEET-444: renamed from 'binary' to 'build')
 # CGO_ENABLED=0 produces a static binary (no libc dependency)
-binary: check-gopath
+build: check-gopath
 	@echo "Building pull-secret binary..."
 	CGO_ENABLED=$(CGO_ENABLED) go build \
 		-o pull-secret \
@@ -88,7 +88,7 @@ binary: check-gopath
 			echo "* WARNING: Your go version is not the expected $(GO_VERSION) *" | sed 's/./*/g'; \
 			printf '\033[0m\n'; \
 		)
-.PHONY: binary
+.PHONY: build
 
 ####################
 # Test & Lint Targets

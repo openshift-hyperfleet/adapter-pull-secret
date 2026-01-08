@@ -1,6 +1,5 @@
 approvers:
 - "86254860"
-- AlexVulaj
 - aredenba-rh
 - ciaranRoche
 - crizzo71
@@ -17,7 +16,6 @@ approvers:
 
 reviewers:
 - "86254860"
-- AlexVulaj
 - aredenba-rh
 - ciaranRoche
 - crizzo71
@@ -31,4 +29,3 @@ reviewers:
 - xueli181114
 - yasun1
 - yingzhanredhat
-
