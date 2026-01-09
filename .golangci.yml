@@ -1,7 +1,7 @@
 # golangci-lint configuration for HyperFleet Pull Secret Job
 # https://golangci-lint.run/usage/configuration/
 # Aligned with HyperFleet Linting Standard (HYPERFLEET-443)
-# All 16 required linters enabled per HyperFleet standard
+# 15 of 16 required linters enabled (revive temporarily disabled)
 version: "2"
 
 run:
