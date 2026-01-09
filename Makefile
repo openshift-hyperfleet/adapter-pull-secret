@@ -76,10 +76,11 @@ endif
 # CGO_ENABLED=0 produces a static binary (no libc dependency)
 build: check-gopath
 	@echo "Building pull-secret binary..."
+	@mkdir -p bin
 	CGO_ENABLED=$(CGO_ENABLED) go build \
-		-o pull-secret \
+		-o bin/pull-secret \
 		./cmd/pull-secret
-	@echo "Binary built: ./pull-secret"
+	@echo "Binary built: ./bin/pull-secret"
 	@go version | grep -q "$(GO_VERSION)" || \
 		( \
 			printf '\033[41m\033[97m\n'; \
@@ -194,7 +195,7 @@ image-dev: ## Build and push to personal Quay registry
 # Delete temporary files and build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f pull-secret
+	rm -rf bin/
 	rm -f *.exe *.dll *.so *.dylib
 	rm -f coverage.txt coverage.html
 	@echo "Clean complete."
