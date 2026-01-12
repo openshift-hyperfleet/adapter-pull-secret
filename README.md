@@ -100,13 +100,13 @@ go mod download
 
 ```bash
 # Using make (recommended)
-make binary
+make build
 
 # Or using go directly
-go build -o pull-secret ./cmd/pull-secret
+mkdir -p bin && go build -o bin/pull-secret ./cmd/pull-secret
 ```
 
-This creates the `pull-secret` executable in the current directory.
+This creates the `pull-secret` executable in the `bin/` directory.
 
 ---
 
@@ -306,7 +306,7 @@ GCP_PROJECT_ID="your-project-id" \
   CLUSTER_ID="cls-test-123" \
   SECRET_NAME="hyperfleet-cls-test-123-pull-secret" \
   PULL_SECRET_DATA='{"auths":{"registry.redhat.io":{"auth":"dGVzdDp0ZXN0","email":"test@example.com"}}}' \
-  ./pull-secret run-job pull-secret
+  ./bin/pull-secret run-job pull-secret
 ```
 
 ### Real-World Example
@@ -316,7 +316,7 @@ GCP_PROJECT_ID="redhat-prod-12345" \
   CLUSTER_ID="cls-abc123" \
   SECRET_NAME="hyperfleet-cls-abc123-pull-secret" \
   PULL_SECRET_DATA='{"auths":{"registry.redhat.io":{"auth":"base64-encoded-credentials","email":"user@redhat.com"},"quay.io":{"auth":"base64-encoded-credentials","email":"user@redhat.com"}}}' \
-  ./pull-secret run-job pull-secret
+  ./bin/pull-secret run-job pull-secret
 ```
 
 ### Expected Output
@@ -657,13 +657,13 @@ Run the job multiple times with the same parameters:
 
 ```bash
 # First run - creates secret and version 1
-./pull-secret run-job pull-secret
+./bin/pull-secret run-job pull-secret
 
 # Second run - secret exists, creates version 2
-./pull-secret run-job pull-secret
+./bin/pull-secret run-job pull-secret
 
 # Third run - secret exists, creates version 3
-./pull-secret run-job pull-secret
+./bin/pull-secret run-job pull-secret
 ```
 
 Each run should succeed and create a new version.
