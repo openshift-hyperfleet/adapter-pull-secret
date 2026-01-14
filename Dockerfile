@@ -22,7 +22,9 @@ USER default
 
 # Build the binary
 # CGO_ENABLED=0 for static binary (simplified MVP build)
+# -buildvcs=false to avoid VCS stamping errors in CI environments
 RUN CGO_ENABLED=0 go build \
+    -buildvcs=false \
     -o pull-secret \
     ./cmd/pull-secret
 
