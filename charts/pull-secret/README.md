@@ -40,9 +40,9 @@ Deploy with custom configuration:
 helm install pullsecret-job ./charts/pull-secret \
   --namespace hyperfleet-system \
   --create-namespace \
-  --set env.gcpProjectId=my-project \
-  --set env.clusterId=my-cluster-123 \
-  --set env.pullSecretData='{"auths":{...}}' \
+  --set gcp.projectId=my-project \
+  --set cluster.id=my-cluster-123 \
+  --set pullSecret.data='{"auths":{...}}' \
   --set image.tag=latest
 ```
 
@@ -51,14 +51,19 @@ helm install pullsecret-job ./charts/pull-secret \
 Create a custom values file (`my-values.yaml`):
 
 ```yaml
-env:
-  gcpProjectId: "my-gcp-project"
-  clusterId: "my-cluster-123"
-  secretName: "hyperfleet-my-cluster-123-pull-secret"
-  pullSecretData: '{"auths":{"registry.example.com":{"auth":"...","email":"user@example.com"}}}'
+gcp:
+  projectId: "my-gcp-project"
+
+cluster:
+  id: "my-cluster-123"
+
+pullSecret:
+  name: "hyperfleet-my-cluster-123-pull-secret"
+  data: '{"auths":{"registry.example.com":{"auth":"...","email":"user@example.com"}}}'
 
 serviceAccount:
-  gcpServiceAccount: "my-service-account@my-project.iam.gserviceaccount.com"
+  annotations:
+    iam.gke.io/gcp-service-account: "my-service-account@my-project.iam.gserviceaccount.com"
 
 image:
   tag: "v1.0.0"
@@ -73,25 +78,61 @@ helm install pullsecret-job ./charts/pull-secret \
   -f my-values.yaml
 ```
 
+## Umbrella Chart Integration
+
+This chart supports integration with the `hyperfleet-chart` umbrella chart.
+
+### Adding to hyperfleet-chart
+
+In your umbrella chart's `Chart.yaml`:
+
+```yaml
+dependencies:
+  - name: pull-secret
+    version: "0.1.0"
+    repository: "git+https://github.com/openshift-hyperfleet/adapter-pull-secret@charts/pull-secret?ref=main"
+    condition: pull-secret.enabled
+```
+
+### Global Image Override
+
+When deployed via umbrella chart, you can set a global image registry:
+
+```yaml
+global:
+  image:
+    registry: "quay.io/my-org"  # Overrides all subchart image registries
+
+pull-secret:
+  enabled: true
+  gcp:
+    projectId: "my-project"
+  cluster:
+    id: "my-cluster"
+```
+
 ## Configuration
 
 The following table lists the configurable parameters:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `namespace` | Kubernetes namespace | `hyperfleet-system` |
-| `job.name` | Job name | `pullsecret-job` |
-| `job.backoffLimit` | Number of retries on failure | `3` |
-| `job.ttlSecondsAfterFinished` | Cleanup delay after completion | `3600` (1 hour) |
-| `image.repository` | Container image repository | `quay.io/hyperfleet/pull-secret` |
+| `global.image.registry` | Global image registry override (umbrella chart) | `""` |
+| `image.registry` | Container image registry | `quay.io/openshift-hyperfleet` |
+| `image.repository` | Container image repository | `pull-secret` |
 | `image.tag` | Container image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `Always` |
-| `serviceAccount.name` | Kubernetes ServiceAccount name | `pullsecret-adapter` |
-| `serviceAccount.gcpServiceAccount` | GCP service account for Workload Identity | `your-service-account@your-project.iam.gserviceaccount.com` |
-| `env.gcpProjectId` | GCP project ID | `your-gcp-project` |
-| `env.clusterId` | Cluster identifier | `your-cluster-id` |
-| `env.secretName` | Secret name in GCP Secret Manager | `hyperfleet-your-cluster-id-pull-secret` |
-| `env.pullSecretData` | Pull secret JSON data (required) | `{"auths":{...}}` |
+| `serviceAccount.create` | Create ServiceAccount | `true` |
+| `serviceAccount.name` | Kubernetes ServiceAccount name | `""` (auto-generated) |
+| `serviceAccount.annotations` | ServiceAccount annotations (for Workload Identity) | `{}` |
+| `rbac.create` | Create RBAC resources | `true` |
+| `job.name` | Job name | `""` (auto-generated) |
+| `job.backoffLimit` | Number of retries on failure | `3` |
+| `job.ttlSecondsAfterFinished` | Cleanup delay after completion | `3600` (1 hour) |
+| `gcp.projectId` | GCP project ID | `""` |
+| `cluster.id` | Cluster identifier | `""` |
+| `pullSecret.name` | Secret name in GCP Secret Manager | Auto-generated |
+| `pullSecret.data` | Pull secret JSON data (required) | `""` |
 | `resources.requests.cpu` | CPU request | `100m` |
 | `resources.requests.memory` | Memory request | `128Mi` |
 | `resources.limits.cpu` | CPU limit | `500m` |
@@ -191,3 +232,4 @@ helm package ./charts/pull-secret
 - [Helm Documentation](https://helm.sh/docs/)
 - [GKE Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity)
 - [Kubernetes Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
+- [HyperFleet Chart](https://github.com/openshift-hyperfleet/hyperfleet-chart)

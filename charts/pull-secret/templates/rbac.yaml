@@ -1,0 +1,36 @@
+{{- if .Values.rbac.create }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "pull-secret.fullname" . }}
+  labels:
+    {{- include "pull-secret.labels" . | nindent 4 }}
+rules:
+  # Secret management permissions - required for pull secret operations
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # Namespace access - read only for listing available namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  {{- with .Values.rbac.rules }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "pull-secret.fullname" . }}
+  labels:
+    {{- include "pull-secret.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "pull-secret.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "pull-secret.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

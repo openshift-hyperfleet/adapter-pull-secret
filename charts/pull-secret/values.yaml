@@ -1,57 +1,109 @@
-# Default values for pull-secret adapter
+# Pull Secret Adapter - Helm Values
+#
+# This adapter manages pull secrets in GCP Secret Manager for HyperFleet clusters.
+# It runs as a Kubernetes Job that stores/updates pull secrets.
+#
+# For umbrella chart integration, set global.image.registry to override image registry.
 
-# Namespace where the job will be deployed
-namespace: hyperfleet-system
+# =============================================================================
+# Global Overrides (for umbrella chart integration)
+# =============================================================================
+# When deployed as part of hyperfleet-chart umbrella, these can be set globally
+global:
+  image:
+    registry: ""  # Override registry for all images (e.g., "quay.io/croche")
 
-# Job configuration
+# =============================================================================
+# Chart Identity
+# =============================================================================
+nameOverride: ""
+fullnameOverride: ""
+
+# =============================================================================
+# Image Configuration
+# =============================================================================
+image:
+  registry: quay.io/openshift-hyperfleet
+  repository: pull-secret
+  tag: "latest"
+  pullPolicy: Always
+
+imagePullSecrets: []
+
+# =============================================================================
+# ServiceAccount Configuration
+# =============================================================================
+serviceAccount:
+  # Create a ServiceAccount for the job
+  create: true
+  # Name of the ServiceAccount (auto-generated if empty)
+  name: ""
+  # Annotations for Workload Identity
+  # For GKE: iam.gke.io/gcp-service-account: GSA_NAME@PROJECT_ID.iam.gserviceaccount.com
+  annotations: {}
+
+# =============================================================================
+# RBAC Configuration
+# =============================================================================
+rbac:
+  # Create RBAC resources (ClusterRole and ClusterRoleBinding)
+  create: true
+  # Additional rules to add to the ClusterRole
+  rules: []
+
+# =============================================================================
+# Job Configuration
+# =============================================================================
 job:
-  # Name of the Kubernetes Job
-  name: pullsecret-job
-
+  # Name override for the job (auto-generated if empty)
+  name: ""
   # Number of times to retry the job on failure
   backoffLimit: 3
-
   # Time in seconds after job completion before cleanup (1 hour)
   ttlSecondsAfterFinished: 3600
-
   # Job restart policy
   restartPolicy: Never
 
-# Image configuration
-image:
-  repository: quay.io/hyperfleet/pull-secret
-  tag: latest
-  pullPolicy: Always
-
-# ServiceAccount configuration
-serviceAccount:
-  # Name of the Kubernetes ServiceAccount
-  name: pullsecret-adapter
-
-  # GCP service account email for Workload Identity
-  # IMPORTANT: Replace with your actual GCP service account
-  gcpServiceAccount: your-service-account@your-project.iam.gserviceaccount.com
-
-# Environment variables
-env:
+# =============================================================================
+# GCP Configuration
+# =============================================================================
+gcp:
   # GCP project ID where secrets will be stored
-  # IMPORTANT: Replace with your actual GCP project ID
-  gcpProjectId: "your-gcp-project"
+  # REQUIRED: Must be set before deployment
+  projectId: ""
 
-  # Cluster identifier
-  # IMPORTANT: Replace with your actual cluster ID
-  clusterId: "your-cluster-id"
+# =============================================================================
+# Cluster Configuration
+# =============================================================================
+cluster:
+  # Cluster identifier - used to name the secret in GCP
+  # REQUIRED: Must be set before deployment
+  id: ""
 
-  # Secret name in GCP Secret Manager (auto-derived if not provided)
-  # This will be auto-generated as: hyperfleet-{clusterId}-pull-secret
-  secretName: "hyperfleet-your-cluster-id-pull-secret"
+# =============================================================================
+# Pull Secret Configuration
+# =============================================================================
+pullSecret:
+  # Secret name in GCP Secret Manager
+  # Auto-generated as: hyperfleet-{cluster.id}-pull-secret if empty
+  name: ""
+  # Pull secret JSON data
+  # REQUIRED: Must be set before deployment
+  # Example: '{"auths":{"registry.example.com":{"auth":"...","email":"user@example.com"}}}'
+  data: ""
 
-  # Pull secret JSON data (must be provided)
-  # IMPORTANT: Replace with your actual pull secret data
-  # This is a dummy example - use your real OpenShift pull secret
-  pullSecretData: '{"auths":{"registry.example.com":{"auth":"ZXhhbXBsZTpleGFtcGxl","email":"user@example.com"}}}'
+# =============================================================================
+# HyperFleet API Configuration (optional)
+# =============================================================================
+hyperfleetApi:
+  # Base URL for HyperFleet API (for status reporting)
+  baseUrl: ""
+  # API version
+  version: "v1"
 
-# Resource limits
+# =============================================================================
+# Resource Limits
+# =============================================================================
 resources:
   requests:
     cpu: 100m
@@ -60,17 +112,43 @@ resources:
     cpu: 500m
     memory: 512Mi
 
-# Security context
+# =============================================================================
+# Security Context
+# =============================================================================
 securityContext:
   runAsNonRoot: true
   runAsUser: 1000
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
+  seccompProfile:
+    type: RuntimeDefault
   capabilities:
     drop:
       - ALL
 
-# Labels
-labels:
-  app: pullsecret-adapter
-  jobType: pull-secret
+# =============================================================================
+# Pod Security Context
+# =============================================================================
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# =============================================================================
+# Platform-specific Scheduling
+# =============================================================================
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# =============================================================================
+# Additional Environment Variables
+# =============================================================================
+env: []
+  # - name: MY_VAR
+  #   value: "my-value"
+  # - name: MY_SECRET
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: my-secret
+  #       key: key

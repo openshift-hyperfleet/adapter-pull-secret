@@ -1,6 +1,6 @@
 # Binaries for programs and plugins
-pull-secret
-pull-secret-mvp
+/pull-secret
+/pull-secret-mvp
 *.exe
 *.exe~
 *.dll

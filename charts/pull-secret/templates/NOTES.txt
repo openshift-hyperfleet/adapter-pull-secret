@@ -1,0 +1,63 @@
+
+===============================================================================
+  HyperFleet Pull Secret Adapter
+===============================================================================
+
+The pull-secret adapter has been deployed as a Kubernetes Job.
+
+Release Name: {{ .Release.Name }}
+Namespace:    {{ .Release.Namespace }}
+Job Name:     {{ include "pull-secret.jobName" . }}
+
+-------------------------------------------------------------------------------
+CONFIGURATION
+-------------------------------------------------------------------------------
+GCP Project:     {{ .Values.gcp.projectId | default "NOT SET - REQUIRED!" }}
+Cluster ID:      {{ .Values.cluster.id | default "NOT SET - REQUIRED!" }}
+Secret Name:     {{ include "pull-secret.secretName" . }}
+Image:           {{ include "pull-secret.image" . }}
+
+-------------------------------------------------------------------------------
+MONITORING
+-------------------------------------------------------------------------------
+Check job status:
+  kubectl get job {{ include "pull-secret.jobName" . }} -n {{ .Release.Namespace }}
+
+View job logs:
+  kubectl logs -f job/{{ include "pull-secret.jobName" . }} -n {{ .Release.Namespace }}
+
+Get job details:
+  kubectl describe job {{ include "pull-secret.jobName" . }} -n {{ .Release.Namespace }}
+
+-------------------------------------------------------------------------------
+CLEANUP
+-------------------------------------------------------------------------------
+The job will be automatically cleaned up {{ .Values.job.ttlSecondsAfterFinished }} seconds after completion.
+
+To manually uninstall:
+  helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+-------------------------------------------------------------------------------
+TROUBLESHOOTING
+-------------------------------------------------------------------------------
+{{- if not .Values.gcp.projectId }}
+WARNING: gcp.projectId is not set! The job will fail.
+  Set it using: --set gcp.projectId=YOUR_PROJECT_ID
+{{- end }}
+{{- if not .Values.cluster.id }}
+WARNING: cluster.id is not set! The job will fail.
+  Set it using: --set cluster.id=YOUR_CLUSTER_ID
+{{- end }}
+{{- if not .Values.pullSecret.data }}
+WARNING: pullSecret.data is not set! The job will fail.
+  Set it using: --set pullSecret.data='{"auths":{...}}'
+{{- end }}
+
+For Workload Identity issues, ensure:
+1. GCP service account has Secret Manager permissions
+2. Kubernetes SA is annotated with GCP SA:
+   kubectl annotate sa {{ include "pull-secret.serviceAccountName" . }} \
+     iam.gke.io/gcp-service-account=GSA_NAME@PROJECT.iam.gserviceaccount.com \
+     -n {{ .Release.Namespace }}
+
+===============================================================================
