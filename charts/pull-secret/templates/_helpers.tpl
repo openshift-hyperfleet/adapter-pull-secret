@@ -58,6 +58,8 @@ Create the name of the service account to use
 {{- define "pull-secret.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "pull-secret.fullname" .) .Values.serviceAccount.name }}
+{{- else if .Values.rbac.create }}
+{{- required "serviceAccount.name must be set when serviceAccount.create=false and rbac.create=true" .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

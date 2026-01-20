@@ -35,15 +35,13 @@ spec:
             - pull-secret
           env:
             - name: GCP_PROJECT_ID
-              value: {{ .Values.gcp.projectId | quote }}
+              value: {{ required "gcp.projectId is required" .Values.gcp.projectId | quote }}
             - name: CLUSTER_ID
-              value: {{ .Values.cluster.id | quote }}
+              value: {{ required "cluster.id is required" .Values.cluster.id | quote }}
             - name: SECRET_NAME
               value: {{ include "pull-secret.secretName" . | quote }}
-            {{- if .Values.pullSecret.data }}
             - name: PULL_SECRET_DATA
-              value: {{ .Values.pullSecret.data | quote }}
-            {{- end }}
+              value: {{ required "pullSecret.data is required" .Values.pullSecret.data | quote }}
             {{- if .Values.hyperfleetApi.baseUrl }}
             - name: HYPERFLEET_API_BASE_URL
               value: {{ .Values.hyperfleetApi.baseUrl | quote }}

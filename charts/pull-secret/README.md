@@ -131,8 +131,8 @@ The following table lists the configurable parameters:
 | `job.ttlSecondsAfterFinished` | Cleanup delay after completion | `3600` (1 hour) |
 | `gcp.projectId` | GCP project ID | `""` |
 | `cluster.id` | Cluster identifier | `""` |
-| `pullSecret.name` | Secret name in GCP Secret Manager | Auto-generated |
-| `pullSecret.data` | Pull secret JSON data (required) | `""` |
+| `pullSecret.name` | Secret name in GCP Secret Manager | `hyperfleet-{cluster.id}-pull-secret` |
+| `pullSecret.data` | Pull secret JSON data (**required**) | `""` |
 | `resources.requests.cpu` | CPU request | `100m` |
 | `resources.requests.memory` | Memory request | `128Mi` |
 | `resources.limits.cpu` | CPU limit | `500m` |
