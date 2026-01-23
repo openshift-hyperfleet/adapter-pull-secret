@@ -1,0 +1,30 @@
+{{- if .Values.broker.type }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pull-secret.brokerConfigMapName" . }}
+  labels:
+    {{- include "pull-secret.labels" . | nindent 4 }}
+data:
+  {{- if .Values.broker.yaml }}
+  broker.yaml: |
+{{ .Values.broker.yaml | indent 4 }}
+  {{- else }}
+  broker.yaml: |
+    type: {{ .Values.broker.type }}
+    {{- if eq .Values.broker.type "googlepubsub" }}
+    googlepubsub:
+      projectId: {{ .Values.broker.googlepubsub.projectId | quote }}
+      topic: {{ .Values.broker.googlepubsub.topic | quote }}
+      subscription: {{ .Values.broker.googlepubsub.subscription | quote }}
+      {{- if .Values.broker.googlepubsub.deadLetterTopic }}
+      deadLetterTopic: {{ .Values.broker.googlepubsub.deadLetterTopic | quote }}
+      {{- end }}
+    {{- else if eq .Values.broker.type "rabbitmq" }}
+    rabbitmq:
+      url: {{ .Values.broker.rabbitmq.url | quote }}
+    {{- end }}
+    subscriber:
+      parallelism: {{ .Values.broker.subscriber.parallelism | default 1 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,60 @@
+{{- if .Values.rbac.create }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "pull-secret.fullname" . }}
+  labels:
+    {{- include "pull-secret.labels" . | nindent 4 }}
+rules:
+  # Read namespaces to verify target namespace exists
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+
+  # Manage ServiceAccounts for adapter task jobs
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Read pods to check adapter task job pod status
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  # Manage RBAC for adapter task jobs (Role and RoleBinding)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Manage adapter task Jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Read and update Job status (needed by status reporter sidecar)
+  - apiGroups: ["batch"]
+    resources: ["jobs/status"]
+    verbs: ["get", "update", "patch"]
+
+  # Secret management permissions - required for pull secret operations
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "pull-secret.fullname" . }}
+  labels:
+    {{- include "pull-secret.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "pull-secret.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "pull-secret.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

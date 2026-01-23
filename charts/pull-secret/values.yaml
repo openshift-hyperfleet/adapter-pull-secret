@@ -1,76 +1,139 @@
-# Default values for pull-secret adapter
+# Pull Secret Adapter - Helm Values
+#
+# This adapter manages pull secrets in GCP Secret Manager for HyperFleet clusters.
+# It uses the Adapter Framework to listen to PubSub messages and create jobs.
+#
+# For umbrella chart integration, set global.image.registry to override image registry.
 
-# Namespace where the job will be deployed
-namespace: hyperfleet-system
+# =============================================================================
+# Global Overrides (for umbrella chart integration)
+# =============================================================================
+# When deployed as part of hyperfleet-chart umbrella, these can be set globally
+global:
+  image:
+    registry: ""  # Override registry for all images (e.g., "quay.io/croche")
 
-# Job configuration
-job:
-  # Name of the Kubernetes Job
-  name: pullsecret-job
+# =============================================================================
+# Chart Identity
+# =============================================================================
+nameOverride: ""
+fullnameOverride: ""
 
-  # Number of times to retry the job on failure
-  backoffLimit: 3
+replicaCount: 1
 
-  # Time in seconds after job completion before cleanup (1 hour)
-  ttlSecondsAfterFinished: 3600
-
-  # Job restart policy
-  restartPolicy: Never
-
-# Image configuration
+# =============================================================================
+# Image Configuration (Adapter Framework)
+# =============================================================================
 image:
-  repository: quay.io/hyperfleet/pull-secret
-  tag: latest
+  # Adapter Framework image
+  registry: registry.ci.openshift.org
+  repository: ci/hyperfleet-adapter
+  tag: "latest"
   pullPolicy: Always
 
-# ServiceAccount configuration
+imagePullSecrets: []
+
+# =============================================================================
+# ServiceAccount Configuration
+# =============================================================================
 serviceAccount:
-  # Name of the Kubernetes ServiceAccount
-  name: pullsecret-adapter
+  # Create a ServiceAccount for the adapter framework deployment
+  create: true
+  # Name of the ServiceAccount (auto-generated if empty)
+  name: ""
+  # Annotations (optional, only needed for legacy GSA-based Workload Identity)
+  # Modern approach uses direct principal binding - no annotation needed
+  # Legacy: iam.gke.io/gcp-service-account: GSA_NAME@PROJECT_ID.iam.gserviceaccount.com
+  annotations: {}
 
-  # GCP service account email for Workload Identity
-  # IMPORTANT: Replace with your actual GCP service account
-  gcpServiceAccount: your-service-account@your-project.iam.gserviceaccount.com
+# =============================================================================
+# RBAC Configuration
+# =============================================================================
+rbac:
+  # Create RBAC resources (ClusterRole and ClusterRoleBinding)
+  create: true
+  # When enabled, grants minimal permissions needed for adapter:
+  # - Read namespaces
+  # - Manage ServiceAccounts, Roles, RoleBindings, Jobs
+  # - Read pods and update Job status
 
-# Environment variables
-env:
-  # GCP project ID where secrets will be stored
-  # IMPORTANT: Replace with your actual GCP project ID
-  gcpProjectId: "your-gcp-project"
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+logging:
+  level: info     # Options: debug, info, warn, error
+  format: text    # Options: text, json
+  output: stderr  # Options: stdout, stderr
 
-  # Cluster identifier
-  # IMPORTANT: Replace with your actual cluster ID
-  clusterId: "your-cluster-id"
+# =============================================================================
+# Broker Configuration (required for adapter to function)
+# =============================================================================
+broker:
+  type: "googlepubsub"  # "googlepubsub" or "rabbitmq"
 
-  # Secret name in GCP Secret Manager (auto-derived if not provided)
-  # This will be auto-generated as: hyperfleet-{clusterId}-pull-secret
-  secretName: "hyperfleet-your-cluster-id-pull-secret"
+  # Google Pub/Sub (required when type: googlepubsub)
+  googlepubsub:
+    projectId: ""        # GCP project ID for Pub/Sub
+    topic: ""            # Pub/Sub topic name
+    subscription: ""     # Pub/Sub subscription name
+    deadLetterTopic: ""  # Optional: Dead letter topic
 
-  # Pull secret JSON data (must be provided)
-  # IMPORTANT: Replace with your actual pull secret data
-  # This is a dummy example - use your real OpenShift pull secret
-  pullSecretData: '{"auths":{"registry.example.com":{"auth":"ZXhhbXBsZTpleGFtcGxl","email":"user@example.com"}}}'
+  # RabbitMQ (required when type: rabbitmq)
+  rabbitmq:
+    url: ""  # amqp://user:pass@host:5672/
 
-# Resource limits
-resources:
-  requests:
-    cpu: 100m
-    memory: 128Mi
-  limits:
-    cpu: 500m
-    memory: 512Mi
+  subscriber:
+    parallelism: 1
 
-# Security context
-securityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  capabilities:
-    drop:
-      - ALL
+  # Raw YAML override (bypasses structured config above)
+  yaml: ""
 
-# Labels
-labels:
-  app: pullsecret-adapter
-  jobType: pull-secret
+# =============================================================================
+# HyperFleet API Configuration
+# =============================================================================
+hyperfleetApi:
+  # Base URL for HyperFleet API (for status reporting)
+  baseUrl: ""
+  # API version
+  version: "v1"
+
+# =============================================================================
+# Pull Secret Adapter Configuration
+# =============================================================================
+pullSecretAdapter:
+  # Pull Secret adapter task image
+  image:
+    registry: quay.io/openshift-hyperfleet
+    repository: pull-secret
+    tag: "latest"
+
+  # Status reporter sidecar image
+  statusReporterImage: "registry.ci.openshift.org/ci/status-reporter:latest"
+
+  # Shared result path for status reporter
+  resultsPath: "/results/adapter-result.json"
+
+  # Maximum time to wait for job completion (seconds)
+  maxWaitTimeSeconds: "300"
+
+  # Log level for job containers
+  logLevel: "info"
+
+# =============================================================================
+# Platform-specific Scheduling
+# =============================================================================
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# =============================================================================
+# Additional Environment Variables
+# =============================================================================
+env: []
+  # - name: MY_VAR
+  #   value: "my-value"
+  # - name: MY_SECRET
+  #   valueFrom:
+  #     secretKeyRef:
+  #       name: my-secret
+  #       key: key

@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pull-secret.fullname" . }}
+  labels:
+    {{- include "pull-secret.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pull-secret.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-app.yaml") . | sha256sum }}
+        {{- if .Values.broker.type }}
+        checksum/broker-config: {{ include (print $.Template.BasePath "/configmap-broker.yaml") . | sha256sum }}
+        {{- end }}
+      labels:
+        {{- include "pull-secret.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "pull-secret.serviceAccountName" . }}
+      securityContext:
+        fsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /app/adapter
+          args:
+            - serve
+          env:
+            - name: LOG_LEVEL
+              value: {{ .Values.logging.level | default "info" | quote }}
+            - name: LOG_FORMAT
+              value: {{ .Values.logging.format | default "text" | quote }}
+            - name: LOG_OUTPUT
+              value: {{ .Values.logging.output | default "stderr" | quote }}
+            {{- with .Values.env }}
+            {{- range . }}
+            - name: {{ .name }}
+              {{- if .value }}
+              value: {{ .value | quote }}
+              {{- else if .valueFrom }}
+              valueFrom:
+                {{- toYaml .valueFrom | nindent 16 }}
+              {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.hyperfleetApi.baseUrl }}
+            - name: HYPERFLEET_API_BASE_URL
+              value: {{ .Values.hyperfleetApi.baseUrl | quote }}
+            {{- end }}
+            - name: HYPERFLEET_API_VERSION
+              value: {{ .Values.hyperfleetApi.version | default "v1" | quote }}
+            - name: ADAPTER_CONFIG_PATH
+              value: /etc/adapter/adapter.yaml
+            {{- if .Values.broker.type }}
+            - name: BROKER_CONFIG_FILE
+              value: /etc/broker/broker.yaml
+            {{- if eq .Values.broker.type "googlepubsub" }}
+            - name: BROKER_SUBSCRIPTION_ID
+              value: {{ .Values.broker.googlepubsub.subscription | quote }}
+            - name: BROKER_TOPIC
+              value: {{ .Values.broker.googlepubsub.topic | quote }}
+            - name: GCP_PROJECT_ID
+              value: {{ .Values.broker.googlepubsub.projectId | quote }}
+            {{- end }}
+            {{- end }}
+            # Pull Secret Adapter specific environment variables
+            - name: STATUS_REPORTER_IMAGE
+              value: {{ .Values.pullSecretAdapter.statusReporterImage | quote }}
+            - name: PULL_SECRET_IMAGE
+              value: {{ include "pull-secret.adapterTaskImage" . | quote }}
+            - name: RESULTS_PATH
+              value: {{ .Values.pullSecretAdapter.resultsPath | quote }}
+            - name: MAX_WAIT_TIME_SECONDS
+              value: {{ .Values.pullSecretAdapter.maxWaitTimeSeconds | quote }}
+            - name: MANAGED_BY_RESOURCE_NAME
+              value: {{ include "pull-secret.fullname" . | quote }}
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: adapter-config
+              mountPath: /etc/adapter
+              readOnly: true
+            {{- if .Values.broker.type }}
+            - name: broker-config
+              mountPath: /etc/broker/broker.yaml
+              subPath: broker.yaml
+              readOnly: true
+            {{- end }}
+      volumes:
+        # Required for readOnlyRootFilesystem: true - provides writable /tmp
+        - name: tmp
+          emptyDir: {}
+        - name: adapter-config
+          configMap:
+            name: {{ include "pull-secret.configMapName" . }}
+        {{- if .Values.broker.type }}
+        - name: broker-config
+          configMap:
+            name: {{ include "pull-secret.brokerConfigMapName" . }}
+            items:
+              - key: broker.yaml
+                path: broker.yaml
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
