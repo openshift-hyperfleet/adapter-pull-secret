@@ -37,14 +37,17 @@ helm install pullsecret-job ./charts/pull-secret \
 Deploy with custom configuration:
 
 ```bash
+# Create a pull-secret.json file with your credentials first
 helm install pullsecret-job ./charts/pull-secret \
   --namespace hyperfleet-system \
   --create-namespace \
   --set gcp.projectId=my-project \
   --set cluster.id=my-cluster-123 \
-  --set pullSecret.data='{"auths":{...}}' \
+  --set-file pullSecret.data=./pull-secret.json \
   --set image.tag=latest
 ```
+
+> **Note**: Use `--set-file` for `pullSecret.data` to avoid exposing sensitive data in shell history.
 
 ### Using a Values File
 
@@ -118,25 +121,38 @@ The following table lists the configurable parameters:
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `global.image.registry` | Global image registry override (umbrella chart) | `""` |
+| `nameOverride` | Override chart name | `""` |
+| `fullnameOverride` | Override full release name | `""` |
 | `image.registry` | Container image registry | `quay.io/openshift-hyperfleet` |
 | `image.repository` | Container image repository | `pull-secret` |
 | `image.tag` | Container image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `Always` |
+| `imagePullSecrets` | Image pull secrets | `[]` |
 | `serviceAccount.create` | Create ServiceAccount | `true` |
 | `serviceAccount.name` | Kubernetes ServiceAccount name | `""` (auto-generated) |
 | `serviceAccount.annotations` | ServiceAccount annotations (for Workload Identity) | `{}` |
 | `rbac.create` | Create RBAC resources | `true` |
+| `rbac.rules` | Additional RBAC rules | `[]` |
 | `job.name` | Job name | `""` (auto-generated) |
 | `job.backoffLimit` | Number of retries on failure | `3` |
 | `job.ttlSecondsAfterFinished` | Cleanup delay after completion | `3600` (1 hour) |
-| `gcp.projectId` | GCP project ID | `""` |
-| `cluster.id` | Cluster identifier | `""` |
+| `job.restartPolicy` | Job restart policy | `Never` |
+| `gcp.projectId` | GCP project ID (**required**) | `""` |
+| `cluster.id` | Cluster identifier (**required**) | `""` |
 | `pullSecret.name` | Secret name in GCP Secret Manager | `hyperfleet-{cluster.id}-pull-secret` |
 | `pullSecret.data` | Pull secret JSON data (**required**) | `""` |
+| `hyperfleetApi.baseUrl` | HyperFleet API base URL | `""` |
+| `hyperfleetApi.version` | HyperFleet API version | `v1` |
 | `resources.requests.cpu` | CPU request | `100m` |
 | `resources.requests.memory` | Memory request | `128Mi` |
 | `resources.limits.cpu` | CPU limit | `500m` |
 | `resources.limits.memory` | Memory limit | `512Mi` |
+| `securityContext` | Container security context | See values.yaml |
+| `podSecurityContext` | Pod security context | See values.yaml |
+| `nodeSelector` | Node selector for pod scheduling | `{}` |
+| `tolerations` | Tolerations for pod scheduling | `[]` |
+| `affinity` | Affinity rules for pod scheduling | `{}` |
+| `env` | Additional environment variables | `[]` |
 
 ## Usage
 
