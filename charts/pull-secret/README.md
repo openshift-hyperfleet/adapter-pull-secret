@@ -1,6 +1,27 @@
 # Pull Secret Adapter Helm Chart
 
-This Helm chart deploys the HyperFleet Pull Secret Adapter as a Kubernetes Job on GKE.
+This Helm chart deploys the HyperFleet Pull Secret Adapter using the Adapter Framework pattern. The adapter listens to PubSub messages and dynamically creates jobs to store pull secrets in GCP Secret Manager.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Adapter Framework (Deployment)                                  │
+│  - Listens to PubSub messages                                    │
+│  - Creates Jobs based on AdapterConfig                           │
+└────────────────────────┬─────────────────────────────────────────┘
+                         │
+                         ▼ (creates dynamically)
+┌──────────────────────────────────────────────────────────────────┐
+│  Pull Secret Job (per cluster)                                   │
+│  ┌─────────────────────┐  ┌─────────────────────┐                │
+│  │ pull-secret         │  │ status-reporter     │                │
+│  │ (main container)    │  │ (sidecar)           │                │
+│  └─────────────────────┘  └─────────────────────┘                │
+│           │                         │                            │
+│           └───── shared volume ─────┘                            │
+└──────────────────────────────────────────────────────────────────┘
+```
 
 ## Prerequisites
 
@@ -16,20 +37,28 @@ This Helm chart deploys the HyperFleet Pull Secret Adapter as a Kubernetes Job o
      --project=YOUR_PROJECT_ID
    ```
 
-3. **Workload Identity configured**
-   - Service Account: `your-service-account@your-project.iam.gserviceaccount.com`
-   - Workload Pool: `your-project.svc.id.goog`
+3. **GCP Pub/Sub configured**
+   - Topic for adapter messages
+   - Subscription for the adapter
+
+4. **Workload Identity configured**
+   - Using `principalSet://` for Workload Identity Federation
+   - No ServiceAccount annotation required (modern approach)
 
 ## Installation
 
 ### Quick Start
 
-Deploy with default values:
+Deploy with required Pub/Sub configuration:
 
 ```bash
-helm install pullsecret-job ./charts/pull-secret \
+helm install pull-secret-adapter ./charts/pull-secret \
   --namespace hyperfleet-system \
-  --create-namespace
+  --create-namespace \
+  --set broker.googlepubsub.projectId=my-project \
+  --set broker.googlepubsub.topic=hyperfleet-events \
+  --set broker.googlepubsub.subscription=pull-secret-adapter-sub \
+  --set hyperfleetApi.baseUrl=https://api.hyperfleet.example.com
 ```
 
 ### Custom Values
@@ -37,45 +66,41 @@ helm install pullsecret-job ./charts/pull-secret \
 Deploy with custom configuration:
 
 ```bash
-# Create a pull-secret.json file with your credentials first
-helm install pullsecret-job ./charts/pull-secret \
+helm install pull-secret-adapter ./charts/pull-secret \
   --namespace hyperfleet-system \
   --create-namespace \
-  --set gcp.projectId=my-project \
-  --set cluster.id=my-cluster-123 \
-  --set-file pullSecret.data=./pull-secret.json \
-  --set image.tag=latest
+  --set broker.googlepubsub.projectId=my-project \
+  --set broker.googlepubsub.topic=hyperfleet-events \
+  --set broker.googlepubsub.subscription=pull-secret-adapter-sub \
+  --set hyperfleetApi.baseUrl=https://api.hyperfleet.example.com \
+  --set pullSecretAdapter.image.tag=v1.0.0
 ```
-
-> **Note**: Use `--set-file` for `pullSecret.data` to avoid exposing sensitive data in shell history.
 
 ### Using a Values File
 
 Create a custom values file (`my-values.yaml`):
 
 ```yaml
-gcp:
-  projectId: "my-gcp-project"
+broker:
+  type: "googlepubsub"
+  googlepubsub:
+    projectId: "my-gcp-project"
+    topic: "hyperfleet-events"
+    subscription: "pull-secret-adapter-sub"
 
-cluster:
-  id: "my-cluster-123"
+hyperfleetApi:
+  baseUrl: "https://api.hyperfleet.example.com"
+  version: "v1"
 
-pullSecret:
-  name: "hyperfleet-my-cluster-123-pull-secret"
-  data: '{"auths":{"registry.example.com":{"auth":"...","email":"user@example.com"}}}'
-
-serviceAccount:
-  annotations:
-    iam.gke.io/gcp-service-account: "my-service-account@my-project.iam.gserviceaccount.com"
-
-image:
-  tag: "v1.0.0"
+pullSecretAdapter:
+  image:
+    tag: "v1.0.0"
 ```
 
 Then install:
 
 ```bash
-helm install pullsecret-job ./charts/pull-secret \
+helm install pull-secret-adapter ./charts/pull-secret \
   --namespace hyperfleet-system \
   --create-namespace \
   -f my-values.yaml
@@ -108,10 +133,11 @@ global:
 
 pull-secret:
   enabled: true
-  gcp:
-    projectId: "my-project"
-  cluster:
-    id: "my-cluster"
+  broker:
+    googlepubsub:
+      projectId: "my-project"
+      topic: "hyperfleet-events"
+      subscription: "pull-secret-adapter-sub"
 ```
 
 ## Configuration
@@ -120,76 +146,100 @@ The following table lists the configurable parameters:
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `global.image.registry` | Global image registry override (umbrella chart) | `""` |
+| **Global** | | |
+| `global.image.registry` | Global image registry override | `""` |
 | `nameOverride` | Override chart name | `""` |
 | `fullnameOverride` | Override full release name | `""` |
-| `image.registry` | Container image registry | `quay.io/openshift-hyperfleet` |
-| `image.repository` | Container image repository | `pull-secret` |
-| `image.tag` | Container image tag | `latest` |
+| `replicaCount` | Number of adapter framework replicas | `1` |
+| **Adapter Framework Image** | | |
+| `image.registry` | Adapter framework image registry | `registry.ci.openshift.org` |
+| `image.repository` | Adapter framework image repository | `ci/hyperfleet-adapter` |
+| `image.tag` | Adapter framework image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `imagePullSecrets` | Image pull secrets | `[]` |
+| **ServiceAccount** | | |
 | `serviceAccount.create` | Create ServiceAccount | `true` |
-| `serviceAccount.name` | Kubernetes ServiceAccount name | `""` (auto-generated) |
-| `serviceAccount.annotations` | ServiceAccount annotations (for Workload Identity) | `{}` |
+| `serviceAccount.name` | ServiceAccount name | `""` (auto-generated) |
+| `serviceAccount.annotations` | ServiceAccount annotations | `{}` |
+| **RBAC** | | |
 | `rbac.create` | Create RBAC resources | `true` |
-| `rbac.rules` | Additional RBAC rules | `[]` |
-| `job.name` | Job name | `""` (auto-generated) |
-| `job.backoffLimit` | Number of retries on failure | `3` |
-| `job.ttlSecondsAfterFinished` | Cleanup delay after completion | `3600` (1 hour) |
-| `job.restartPolicy` | Job restart policy | `Never` |
-| `gcp.projectId` | GCP project ID (**required**) | `""` |
-| `cluster.id` | Cluster identifier (**required**) | `""` |
-| `pullSecret.name` | Secret name in GCP Secret Manager | `hyperfleet-{cluster.id}-pull-secret` |
-| `pullSecret.data` | Pull secret JSON data (**required**) | `""` |
+| **Logging** | | |
+| `logging.level` | Log level (debug, info, warn, error) | `info` |
+| `logging.format` | Log format (text, json) | `text` |
+| `logging.output` | Log output (stdout, stderr) | `stderr` |
+| **Broker** | | |
+| `broker.type` | Broker type (googlepubsub, rabbitmq) | `googlepubsub` |
+| `broker.googlepubsub.projectId` | GCP project ID for Pub/Sub | `""` |
+| `broker.googlepubsub.topic` | Pub/Sub topic name | `""` |
+| `broker.googlepubsub.subscription` | Pub/Sub subscription name | `""` |
+| `broker.googlepubsub.deadLetterTopic` | Dead letter topic (optional) | `""` |
+| `broker.subscriber.parallelism` | Message processing parallelism | `1` |
+| **HyperFleet API** | | |
 | `hyperfleetApi.baseUrl` | HyperFleet API base URL | `""` |
 | `hyperfleetApi.version` | HyperFleet API version | `v1` |
-| `resources.requests.cpu` | CPU request | `100m` |
-| `resources.requests.memory` | Memory request | `128Mi` |
-| `resources.limits.cpu` | CPU limit | `500m` |
-| `resources.limits.memory` | Memory limit | `512Mi` |
-| `securityContext` | Container security context | See values.yaml |
-| `podSecurityContext` | Pod security context | See values.yaml |
-| `nodeSelector` | Node selector for pod scheduling | `{}` |
-| `tolerations` | Tolerations for pod scheduling | `[]` |
-| `affinity` | Affinity rules for pod scheduling | `{}` |
+| **Pull Secret Adapter** | | |
+| `pullSecretAdapter.image.registry` | Job container image registry | `quay.io/openshift-hyperfleet` |
+| `pullSecretAdapter.image.repository` | Job container image repository | `pull-secret` |
+| `pullSecretAdapter.image.tag` | Job container image tag | `latest` |
+| `pullSecretAdapter.statusReporterImage` | Status reporter sidecar image | `registry.ci.openshift.org/ci/status-reporter:latest` |
+| `pullSecretAdapter.resultsPath` | Shared result path | `/results/adapter-result.json` |
+| `pullSecretAdapter.maxWaitTimeSeconds` | Max job wait time | `300` |
+| `pullSecretAdapter.logLevel` | Job container log level | `info` |
+| **Scheduling** | | |
+| `nodeSelector` | Node selector | `{}` |
+| `tolerations` | Tolerations | `[]` |
+| `affinity` | Affinity rules | `{}` |
 | `env` | Additional environment variables | `[]` |
+
+## How It Works
+
+1. **PubSub Message**: HyperFleet sends a message with cluster info (`clusterId`, `projectId`, `pullSecretData`)
+2. **Adapter Framework**: Receives the message and creates a Job based on the AdapterConfig
+3. **Pull Secret Job**: Stores the pull secret in GCP Secret Manager
+4. **Status Reporter**: Reports job status back to HyperFleet API
 
 ## Usage
 
 ### Monitoring
 
-Check job status:
+Check deployment status:
 ```bash
-helm status pullsecret-job -n hyperfleet-system
-kubectl get job pullsecret-job -n hyperfleet-system
+helm status pull-secret-adapter -n hyperfleet-system
+kubectl get deployment -n hyperfleet-system
+kubectl get pods -n hyperfleet-system
 ```
 
-View logs:
+View adapter logs:
 ```bash
-kubectl logs -f job/pullsecret-job -n hyperfleet-system
+kubectl logs -f deployment/pull-secret-adapter -n hyperfleet-system
+```
+
+View job logs (for a specific cluster):
+```bash
+kubectl logs -f job/pull-secret-<cluster-id>-<generation> -n <cluster-id>
 ```
 
 ### Upgrading
 
-Upgrade the deployment with new values:
+Upgrade the deployment:
 ```bash
-helm upgrade pullsecret-job ./charts/pull-secret \
+helm upgrade pull-secret-adapter ./charts/pull-secret \
   --namespace hyperfleet-system \
-  --set image.tag=v1.1.0
+  --set pullSecretAdapter.image.tag=v1.1.0
 ```
 
 ### Uninstalling
 
-Remove the job:
+Remove the adapter:
 ```bash
-helm uninstall pullsecret-job -n hyperfleet-system
+helm uninstall pull-secret-adapter -n hyperfleet-system
 ```
 
 ## Dry Run Mode
 
-Test without creating secrets:
+Test without deploying:
 ```bash
-helm install pullsecret-job ./charts/pull-secret \
+helm install pull-secret-adapter ./charts/pull-secret \
   --namespace hyperfleet-system \
   --dry-run --debug
 ```
@@ -198,26 +248,26 @@ helm install pullsecret-job ./charts/pull-secret \
 
 ### View rendered templates
 ```bash
-helm template pullsecret-job ./charts/pull-secret
+helm template pull-secret-adapter ./charts/pull-secret
 ```
 
 ### Check deployment issues
 ```bash
-kubectl describe job pullsecret-job -n hyperfleet-system
+kubectl describe deployment pull-secret-adapter -n hyperfleet-system
 kubectl get events -n hyperfleet-system --sort-by='.lastTimestamp'
 ```
 
 ### Authentication errors
 
-Verify Workload Identity binding:
+Verify Workload Identity:
 ```bash
 # Check ServiceAccount
-kubectl get sa pullsecret-adapter -n hyperfleet-system -o yaml
+kubectl get sa -n hyperfleet-system
 
-# Check GCP IAM binding
-gcloud iam service-accounts get-iam-policy \
-  your-service-account@your-project.iam.gserviceaccount.com \
-  --project=your-project
+# Verify IAM binding (using principalSet)
+gcloud projects get-iam-policy YOUR_PROJECT_ID \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:principalSet://"
 ```
 
 ## Development
@@ -249,3 +299,4 @@ helm package ./charts/pull-secret
 - [GKE Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity)
 - [Kubernetes Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
 - [HyperFleet Chart](https://github.com/openshift-hyperfleet/hyperfleet-chart)
+- [Adapter Framework Pattern](https://github.com/openshift-hyperfleet/adapter-validation-gcp)

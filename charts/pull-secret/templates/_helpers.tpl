@@ -58,26 +58,30 @@ Create the name of the service account to use
 {{- define "pull-secret.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "pull-secret.fullname" .) .Values.serviceAccount.name }}
-{{- else if .Values.rbac.create }}
-{{- required "serviceAccount.name must be set when serviceAccount.create=false and rbac.create=true" .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{/*
-Create the name of the job
+Create the ConfigMap name for adapter configuration
 */}}
-{{- define "pull-secret.jobName" -}}
-{{- default (include "pull-secret.fullname" .) .Values.job.name }}
+{{- define "pull-secret.configMapName" -}}
+{{- printf "%s-config" (include "pull-secret.fullname" .) }}
 {{- end }}
 
 {{/*
-Create the image reference with global override support.
-Global image registry takes precedence over local registry.
+Create the ConfigMap name for broker configuration
 */}}
-{{- define "pull-secret.image" -}}
-{{- $registry := .Values.image.registry }}
+{{- define "pull-secret.brokerConfigMapName" -}}
+{{- printf "%s-broker" (include "pull-secret.fullname" .) }}
+{{- end }}
+
+{{/*
+Create the adapter task (job) image reference with global override support.
+*/}}
+{{- define "pull-secret.adapterTaskImage" -}}
+{{- $registry := .Values.pullSecretAdapter.image.registry }}
 {{- if .Values.global }}
 {{- if .Values.global.image }}
 {{- if .Values.global.image.registry }}
@@ -85,17 +89,5 @@ Global image registry takes precedence over local registry.
 {{- end }}
 {{- end }}
 {{- end }}
-{{- printf "%s/%s:%s" $registry .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) }}
-{{- end }}
-
-{{/*
-Create the secret name in GCP Secret Manager
-Auto-generates as: hyperfleet-{cluster.id}-pull-secret if not provided
-*/}}
-{{- define "pull-secret.secretName" -}}
-{{- if .Values.pullSecret.name }}
-{{- .Values.pullSecret.name }}
-{{- else }}
-{{- printf "hyperfleet-%s-pull-secret" .Values.cluster.id }}
-{{- end }}
+{{- printf "%s/%s:%s" $registry .Values.pullSecretAdapter.image.repository (.Values.pullSecretAdapter.image.tag | default .Chart.AppVersion) }}
 {{- end }}

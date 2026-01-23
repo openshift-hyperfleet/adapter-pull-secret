@@ -1,63 +1,91 @@
-
-===============================================================================
+============================================================
   HyperFleet Pull Secret Adapter
-===============================================================================
+============================================================
 
-The pull-secret adapter has been deployed as a Kubernetes Job.
+The Pull Secret Adapter has been deployed successfully!
 
-Release Name: {{ .Release.Name }}
-Namespace:    {{ .Release.Namespace }}
-Job Name:     {{ include "pull-secret.jobName" . }}
+Architecture:
+  - Adapter Framework (Deployment) listens to PubSub messages
+  - Creates Jobs dynamically to store pull secrets in GCP Secret Manager
+  - Status Reporter sidecar reports status back to HyperFleet API
 
--------------------------------------------------------------------------------
-CONFIGURATION
--------------------------------------------------------------------------------
-GCP Project:     {{ .Values.gcp.projectId | default "NOT SET - REQUIRED!" }}
-Cluster ID:      {{ .Values.cluster.id | default "NOT SET - REQUIRED!" }}
-Secret Name:     {{ include "pull-secret.secretName" . }}
-Image:           {{ include "pull-secret.image" . }}
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
 
--------------------------------------------------------------------------------
-MONITORING
--------------------------------------------------------------------------------
-Check job status:
-  kubectl get job {{ include "pull-secret.jobName" . }} -n {{ .Release.Namespace }}
+============================================================
+  COMPONENTS
+============================================================
 
-View job logs:
-  kubectl logs -f job/{{ include "pull-secret.jobName" . }} -n {{ .Release.Namespace }}
+Adapter Framework Deployment:
+  Name: {{ include "pull-secret.fullname" . }}
+  Replicas: {{ .Values.replicaCount }}
 
-Get job details:
-  kubectl describe job {{ include "pull-secret.jobName" . }} -n {{ .Release.Namespace }}
+ServiceAccount:
+  Name: {{ include "pull-secret.serviceAccountName" . }}
 
--------------------------------------------------------------------------------
-CLEANUP
--------------------------------------------------------------------------------
-The job will be automatically cleaned up {{ .Values.job.ttlSecondsAfterFinished }} seconds after completion.
+============================================================
+  BROKER CONFIGURATION
+============================================================
+{{- if .Values.broker.type }}
+Broker Type: {{ .Values.broker.type }}
+{{- if eq .Values.broker.type "googlepubsub" }}
+  Project ID: {{ .Values.broker.googlepubsub.projectId }}
+  Topic: {{ .Values.broker.googlepubsub.topic }}
+  Subscription: {{ .Values.broker.googlepubsub.subscription }}
+{{- end }}
+{{- else }}
+WARNING: No broker configured! The adapter will not receive any messages.
+{{- end }}
 
-To manually uninstall:
+============================================================
+  IMAGES
+============================================================
+
+Adapter Framework:
+  {{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+
+Pull Secret Job:
+  {{ include "pull-secret.adapterTaskImage" . }}
+
+Status Reporter:
+  {{ .Values.pullSecretAdapter.statusReporterImage }}
+
+============================================================
+  MONITORING
+============================================================
+
+Check deployment status:
+  kubectl get deployment {{ include "pull-secret.fullname" . }} -n {{ .Release.Namespace }}
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "pull-secret.name" . }}
+
+View adapter logs:
+  kubectl logs -f deployment/{{ include "pull-secret.fullname" . }} -n {{ .Release.Namespace }}
+
+View dynamically created jobs:
+  kubectl get jobs -n <cluster-namespace> -l hyperfleet.io/managed-by={{ include "pull-secret.fullname" . }}
+
+============================================================
+  UPGRADE / UNINSTALL
+============================================================
+
+Upgrade:
+  helm upgrade {{ .Release.Name }} ./charts/pull-secret -n {{ .Release.Namespace }}
+
+Uninstall:
   helm uninstall {{ .Release.Name }} -n {{ .Release.Namespace }}
 
--------------------------------------------------------------------------------
-TROUBLESHOOTING
--------------------------------------------------------------------------------
-{{- if not .Values.gcp.projectId }}
-WARNING: gcp.projectId is not set! The job will fail.
-  Set it using: --set gcp.projectId=YOUR_PROJECT_ID
-{{- end }}
-{{- if not .Values.cluster.id }}
-WARNING: cluster.id is not set! The job will fail.
-  Set it using: --set cluster.id=YOUR_CLUSTER_ID
-{{- end }}
-{{- if not .Values.pullSecret.data }}
-WARNING: pullSecret.data is not set! The job will fail.
-  Set it using: --set pullSecret.data='{"auths":{...}}'
-{{- end }}
+============================================================
+  TROUBLESHOOTING
+============================================================
 
-For Workload Identity issues, ensure:
-1. GCP service account has Secret Manager permissions
-2. Kubernetes SA is annotated with GCP SA:
-   kubectl annotate sa {{ include "pull-secret.serviceAccountName" . }} \
-     iam.gke.io/gcp-service-account=GSA_NAME@PROJECT.iam.gserviceaccount.com \
-     -n {{ .Release.Namespace }}
+1. Check adapter framework logs:
+   kubectl logs -f deployment/{{ include "pull-secret.fullname" . }} -n {{ .Release.Namespace }}
 
-===============================================================================
+2. Check PubSub subscription:
+   gcloud pubsub subscriptions describe {{ .Values.broker.googlepubsub.subscription }} --project={{ .Values.broker.googlepubsub.projectId }}
+
+3. Verify ServiceAccount permissions:
+   kubectl get clusterrolebinding {{ include "pull-secret.fullname" . }} -o yaml
+
+4. Check for events:
+   kubectl get events -n {{ .Release.Namespace }} --sort-by='.lastTimestamp'

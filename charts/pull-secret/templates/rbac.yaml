@@ -7,17 +7,41 @@ metadata:
   labels:
     {{- include "pull-secret.labels" . | nindent 4 }}
 rules:
+  # Read namespaces to verify target namespace exists
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+
+  # Manage ServiceAccounts for adapter task jobs
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Read pods to check adapter task job pod status
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  # Manage RBAC for adapter task jobs (Role and RoleBinding)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Manage adapter task Jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Read and update Job status (needed by status reporter sidecar)
+  - apiGroups: ["batch"]
+    resources: ["jobs/status"]
+    verbs: ["get", "update", "patch"]
+
   # Secret management permissions - required for pull secret operations
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-  # Namespace access - read only for listing available namespaces
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["get", "list", "watch"]
-  {{- with .Values.rbac.rules }}
-  {{- toYaml . | nindent 2 }}
-  {{- end }}
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

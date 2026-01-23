@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pull-secret.configMapName" . }}
+  labels:
+    {{- include "pull-secret.labels" . | nindent 4 }}
+data:
+  adapter.yaml: |
+{{ .Files.Get "configs/pull-secret-adapter.yaml" | indent 4 }}
+  job-template.yaml: |
+{{ .Files.Get "configs/pull-secret-job-adapter-task.yaml" | indent 4 }}
